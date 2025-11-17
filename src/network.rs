@@ -53,7 +53,7 @@ pub async fn run_network_task(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let local_key = libp2p::identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
-    println!("[{role:?}] Local peer id: {local_peer_id}");
+    tracing::info!("[{role:?}] Local peer id: {local_peer_id}");
 
     let mut swarm = SwarmBuilder::with_existing_identity(local_key)
         .with_tokio()
@@ -131,11 +131,11 @@ pub async fn run_network_task(
                         match serde_json::to_vec(&event) {
                         Ok(bytes) => {
                             if let Err(e) = swarm.behaviour_mut().gossipsub.publish(topic.clone(), bytes) {
-                                eprintln!("[{role:?}] Publish error: {e:?}");
+                                tracing::error!("[{role:?}] Publish error: {e:?}");
                             }
                         }
                         Err(e) => {
-                            eprintln!("[{role:?}] Failed to serialize CloudEvent: {e}");
+                            tracing::error!("[{role:?}] Failed to serialize CloudEvent: {e}");
                         }
                     }                    }
                 }
@@ -143,17 +143,17 @@ pub async fn run_network_task(
             event = swarm.select_next_some() => {
                  match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        println!("[{role:?}] Listening on {address}");
+                        tracing::debug!("[{role:?}] Listening on {address}");
                     }
                     SwarmEvent::Behaviour(MeshBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, _multiaddr) in list {
-                            println!("[{role:?}] mDNS discovered: {peer_id}");
+                            tracing::debug!("[{role:?}] mDNS discovered: {peer_id}");
                             swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                         }
                     },
                     SwarmEvent::Behaviour(MeshBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                         for (peer_id, _multiaddr) in list {
-                            println!("[{role:?}] mDNS expired: {peer_id}");
+                            tracing::debug!("[{role:?}] mDNS expired: {peer_id}");
                             swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                         }
                     },
@@ -163,19 +163,19 @@ pub async fn run_network_task(
                     })) => {
                         match serde_json::from_slice::<CloudEvent>(&message.data) {
                             Ok(event) => {
-                                println!("[{role:?}] Received CloudEvent from peer: {}", event.source);
+                                tracing::debug!("[{role:?}] Received CloudEvent from peer: {}", event.source);
                                 if event_tx.send(Event::Message(event)).await.is_err() {
-                                    eprintln!("[{role:?}] Event receiver closed.");
+                                    tracing::error!("[{role:?}] Event receiver closed.");
                                     break;
                                 }
                             }
                             Err(e) => {
-                                eprintln!("[{role:?}] Failed to deserialize CloudEvent: {e}");
+                                tracing::error!("[{role:?}] Failed to deserialize CloudEvent: {e}");
                             }
                         }
                     },
                     SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                        println!("[{role:?}] Connected to {peer_id}");
+                        tracing::info!("[{role:?}] Connected to {peer_id}");
                     }
                     _ => {}
                 }

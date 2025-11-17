@@ -1,4 +1,5 @@
 use clap::Parser;
+use dotenvy::dotenv;
 use revenant::adapters::p2p_syncer::{NetworkEvent, P2pNodeRole, P2pSyncer};
 use revenant::adapters::sqlite_repo::SqliteRepository;
 use revenant::cloudevents::{CloudEvent, CloudEventData};
@@ -6,8 +7,10 @@ use revenant::core::{RevenantConfig, RevenantService};
 use revenant::net::Multiaddr;
 use revenant::ports::EventProcessor;
 use revenant::DataRepository;
+use scribe_rust::CustomLoggerLayer;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing_subscriber::layer::SubscriberExt;
 use uuid::Uuid;
 
 // --- 1. Define our Business Logic ---
@@ -38,9 +41,10 @@ impl EventProcessor for GeofenceProcessor {
             // Check if the coordinates are outside our geofence.
             if lat < self.min_lat || lat > self.max_lat || lon < self.min_lon || lon > self.max_lon
             {
-                println!(
+                tracing::info!(
                     "[Processor] GEOFENCE BREACH DETECTED at ({}, {})!",
-                    lat, lon
+                    lat,
+                    lon
                 );
 
                 // If a breach is detected, create a new "alert" event.
@@ -89,6 +93,17 @@ enum Subcommand {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv().ok();
+
+    let logger = scribe_rust::Logger::default();
+
+    let custom_layer = CustomLoggerLayer {
+        logger: Arc::clone(&logger),
+    };
+
+    let subscriber = tracing_subscriber::registry().with(custom_layer);
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set global subscriber");
+
     let opts = Opts::parse();
     let (role, cloud_addr) = match opts.sub {
         Subcommand::Cloud => (P2pNodeRole::Cloud, None),
@@ -130,8 +145,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config,
     ));
 
-    println!("Revenant service initialized in {:?} mode.", role.clone());
-    println!("Database path: {}", db_path);
+    tracing::info!("Revenant service initialized in {:?} mode.", role.clone());
+    tracing::debug!("Database path: {}", db_path);
 
     // --- 6. Run Role-Specific Application Logic ---
 
@@ -164,17 +179,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .build();
 
-            println!("[Drone App] Submitting telemetry #{}", sequence);
+            tracing::debug!("[Drone App] Submitting telemetry #{}", sequence);
 
             if let Err(e) = revenant_service.submit(telemetry_event).await {
-                eprintln!("[Drone App] Failed to submit event: {}", e);
+                tracing::error!("[Drone App] Failed to submit event: {}", e);
             }
 
             sequence += 1;
         }
     } else {
         // Cloud and Edge nodes run a listener task.
-        println!(
+        tracing::info!(
             "Running as {:?}. Listening for incoming events...",
             role.clone()
         );
@@ -185,7 +200,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(event) = event_rx.recv().await {
                 match event {
                     NetworkEvent::Received(cloud_event) => {
-                        println!(
+                        tracing::trace!(
                             "[{:?} App] Received event from network. Submitting to local service.",
                             role_clone.clone()
                         );
@@ -194,7 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // The service will run its own processor on the event.
                         // If the processor generates a new event, it will be stored locally.
                         if let Err(e) = service_clone.submit(cloud_event.clone()).await {
-                            eprintln!(
+                            tracing::error!(
                                 "[{:?} App] Failed to submit received event: {}, error: {}",
                                 role_clone.clone(),
                                 cloud_event.to_string(),
@@ -210,9 +225,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             tokio::time::sleep(Duration::from_secs(15)).await;
             let pending = repository.count_pending().await?;
-            println!(
+            tracing::trace!(
                 "[{:?} App] Health Check: {} events pending sync.",
-                role, pending
+                role,
+                pending
             );
         }
     }

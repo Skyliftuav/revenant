@@ -88,7 +88,7 @@ impl RevenantService {
             let guard = inner.lock().await;
 
             if let Err(e) = Self::sync_cycle(&guard).await {
-                eprintln!("[Revenant] Sync cycle failed: {}", e);
+                tracing::error!("[Revenant] Sync cycle failed: {}", e);
             }
         }
     }
@@ -97,7 +97,7 @@ impl RevenantService {
     async fn sync_cycle(inner: &RevenantServiceInner) -> Result<(), RevenantError> {
         // Only attempt to sync if we are connected.
         if !inner.syncer.is_connected().await {
-            println!("[Revenant] Syncer not connected. Skipping sync cycle.");
+            tracing::debug!("[Revenant] Syncer not connected. Skipping sync cycle.");
             return Ok(());
         }
 
@@ -110,7 +110,7 @@ impl RevenantService {
             return Ok(());
         }
 
-        println!(
+        tracing::debug!(
             "[Revenant] Found {} pending workloads to sync.",
             batch.len()
         );
@@ -121,10 +121,10 @@ impl RevenantService {
                 // Note: This doesn't mean they were received, just that the network layer accepted them.
                 // Acknowledgment is a higher-level concern we can add later.
                 inner.repository.mark_as_synced(&batch).await?;
-                println!("[Revenant] Successfully synced batch of {}.", batch.len());
+                tracing::debug!("[Revenant] Successfully synced batch of {}.", batch.len());
             }
             Err(e) => {
-                eprintln!(
+                tracing::error!(
                     "[Revenant] Sync batch failed: {}. Incrementing retry counts.",
                     e
                 );

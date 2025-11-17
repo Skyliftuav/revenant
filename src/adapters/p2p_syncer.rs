@@ -73,7 +73,7 @@ impl P2pSyncer {
             )
             .await
             {
-                eprintln!("[P2pSyncer] Network task failed: {}", e);
+                tracing::error!("[P2pSyncer] Network task failed: {}", e);
             }
         });
 
@@ -118,7 +118,7 @@ async fn run_network_task(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let local_key = libp2p::identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
-    println!("[{role:?}] Local peer id: {local_peer_id}");
+    tracing::info!("[{role:?}] Local peer id: {local_peer_id}");
 
     let mut swarm = SwarmBuilder::with_existing_identity(local_key)
         .with_tokio()
@@ -173,9 +173,9 @@ async fn run_network_task(
             swarm.listen_on("/ip4/0.0.0.0/tcp/25566".parse()?)?;
             if let Some(addr) = cloud_addr {
                 swarm.dial(addr.deref().clone())?;
-                println!("[Edge] Dialed cloud address: {}", addr.deref());
+                tracing::info!("[Edge] Dialed cloud address: {}", addr.deref());
             } else {
-                eprintln!("[Edge] No cloud address provided to dial.");
+                tracing::error!("[Edge] No cloud address provided to dial.");
             };
         }
         NodeRole::Drone => {
@@ -191,10 +191,10 @@ async fn run_network_task(
                         let message_id = swarm.behaviour_mut().gossipsub.publish(topic.clone(), data);
                         match message_id {
                             Ok(id) => {
-                                println!("[{role:?}] Published message with id: {:?}", id);
+                                tracing::debug!("[{role:?}] Published message with id: {:?}", id);
                             }
                             Err(e) => {
-                                eprintln!("[{role:?}] Failed to publish message: {}", e);
+                                tracing::error!("[{role:?}] Failed to publish message: {}", e);
                             }
                         }
                     }
@@ -203,17 +203,17 @@ async fn run_network_task(
             event = swarm.select_next_some() => {
                  match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        println!("[{role:?}] Listening on {address}");
+                        tracing::debug!("[{role:?}] Listening on {address}");
                     }
                     SwarmEvent::ConnectionEstablished { .. } => {
                         let count = swarm.network_info().num_peers();
                         connected_peers.store(count, Ordering::Relaxed);
-                        println!("[{role:?}] Connection established. Total peers: {}", count);
+                        tracing::info!("[{role:?}] Connection established. Total peers: {}", count);
                     }
                     SwarmEvent::ConnectionClosed { .. } => {
                         let count = swarm.network_info().num_peers();
                         connected_peers.store(count, Ordering::Relaxed);
-                        println!("[{role:?}] Connection closed. Total peers: {}", count);
+                        tracing::debug!("[{role:?}] Connection closed. Total peers: {}", count);
                     }
                     SwarmEvent::Behaviour(P2pBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                         for (peer_id, _) in list {
@@ -223,13 +223,13 @@ async fn run_network_task(
                     SwarmEvent::Behaviour(P2pBehaviourEvent::Gossipsub(gossipsub::Event::Message { message, .. })) => {
                         match serde_json::from_slice::<CloudEvent>(&message.data) {
                             Ok(event) => {
-                                println!("[{role:?}] Received gossip message from {}", event.source);
+                                tracing::trace!("[{role:?}] Received gossip message from {}", event.source);
                                 if event_tx.send(NetworkEvent::Received(event)).await.is_err() {
-                                    eprintln!("[{role:?}] Network event channel closed. Shutting down listener part.");
+                                    tracing::error!("[{role:?}] Network event channel closed. Shutting down listener part.");
                                 }
                             }
                             Err(e) => {
-                                eprintln!("[{role:?}] Failed to deserialize CloudEvent from gossip: {}", e);
+                                tracing::error!("[{role:?}] Failed to deserialize CloudEvent from gossip: {}", e);
                             }
                         }
                     },
