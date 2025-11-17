@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config,
     ));
 
-    println!("Revenant service initialized in {:?} mode.", role);
+    println!("Revenant service initialized in {:?} mode.", role.clone());
     println!("Database path: {}", db_path);
 
     // --- 6. Run Role-Specific Application Logic ---
@@ -174,26 +174,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else {
         // Cloud and Edge nodes run a listener task.
-        println!("Running as {:?}. Listening for incoming events...", role);
+        println!(
+            "Running as {:?}. Listening for incoming events...",
+            role.clone()
+        );
 
         let service_clone = revenant_service.clone();
+        let role_clone = role.clone();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
-                if let NetworkEvent::Received(cloud_event) = event {
-                    println!(
-                        "[{:?} App] Received event from network. Submitting to local service.",
-                        role
-                    );
-
-                    // Submit the received event to this node's own RevenantService.
-                    // The service will run its own processor on the event.
-                    // If the processor generates a new event, it will be stored locally.
-                    if let Err(e) = service_clone.submit(cloud_event).await {
-                        eprintln!(
-                            "[{:?} App] Failed to submit received event: {}",
-                            e,
-                            cloud_event.to_string()
+                match event {
+                    NetworkEvent::Received(cloud_event) => {
+                        println!(
+                            "[{:?} App] Received event from network. Submitting to local service.",
+                            role_clone.clone()
                         );
+
+                        // Submit the received event to this node's own RevenantService.
+                        // The service will run its own processor on the event.
+                        // If the processor generates a new event, it will be stored locally.
+                        if let Err(e) = service_clone.submit(cloud_event.clone()).await {
+                            eprintln!(
+                                "[{:?} App] Failed to submit received event: {}, error: {}",
+                                role_clone.clone(),
+                                cloud_event.to_string(),
+                                e
+                            );
+                        }
                     }
                 }
             }
