@@ -186,9 +186,17 @@ async fn run_network_task(
     loop {
         tokio::select! {
             Some(command) = command_rx.recv() => {
-                if let NetworkCommand::Publish(bytes) = command {
-                    if let Err(e) = swarm.behaviour_mut().gossipsub.publish(topic.clone(), bytes) {
-                        eprintln!("[{role:?}] Publish error: {e:?}");
+                match command {
+                    NetworkCommand::Publish(data) => {
+                        let message_id = swarm.behaviour_mut().gossipsub.publish(topic.clone(), data);
+                        match message_id {
+                            Ok(id) => {
+                                println!("[{role:?}] Published message with id: {:?}", id);
+                            }
+                            Err(e) => {
+                                eprintln!("[{role:?}] Failed to publish message: {}", e);
+                            }
+                        }
                     }
                 }
             },

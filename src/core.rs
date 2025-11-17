@@ -3,7 +3,7 @@ use crate::error::RevenantError;
 use crate::ports::{DataRepository, DataSyncer, EventProcessor};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 use tokio::time::interval;
 use uuid::Uuid;
 

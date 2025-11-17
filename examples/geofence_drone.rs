@@ -3,9 +3,11 @@ use revenant::adapters::p2p_syncer::{NetworkEvent, P2pNodeRole, P2pSyncer};
 use revenant::adapters::sqlite_repo::SqliteRepository;
 use revenant::cloudevents::{CloudEvent, CloudEventData};
 use revenant::core::{RevenantConfig, RevenantService};
+use revenant::net::Multiaddr;
 use revenant::ports::EventProcessor;
 use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
 
 // --- 1. Define our Business Logic ---
 
@@ -186,7 +188,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // The service will run its own processor on the event.
                     // If the processor generates a new event, it will be stored locally.
                     if let Err(e) = service_clone.submit(cloud_event).await {
-                        eprintln!("[{:?} App] Failed to submit received event: {}", e);
+                        eprintln!(
+                            "[{:?} App] Failed to submit received event: {}",
+                            e, cloud_event
+                        );
                     }
                 }
             }

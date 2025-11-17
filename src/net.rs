@@ -1,6 +1,8 @@
 use std::ops::Deref;
 use std::str::FromStr;
 
+use crate::RevenantError;
+
 /// A wrapper around a network multiaddress.
 ///
 /// This struct provides a stable, public-facing API for network addresses,

@@ -1,5 +1,6 @@
 // src/cloudevents.rs
 
+use base64::Engine;
 // Add the necessary use statements
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -112,8 +113,9 @@ impl CloudEvent {
     }
 
     pub fn encode_data_base64(&mut self, data: Vec<u8>) -> &mut Self {
-        // use Engine::encode to encode data to base64
-        self.data_base64 = Some(base64::encode(data));
+        // Encode the data to base64 and set the data_base64 field
+        let encoded = base64::engine::general_purpose::STANDARD.encode(data);
+        self.data_base64 = Some(encoded);
         self
     }
 
