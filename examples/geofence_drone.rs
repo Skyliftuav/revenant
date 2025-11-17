@@ -116,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The Revenant Configuration
     let config = RevenantConfig {
-        sync_interval: Duration::from_secs(10),
+        sync_interval: Duration::from_millis(100),
         batch_size: 50,
         max_retry_attempts: 3,
     };
@@ -142,7 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Simulate a drone flying and periodically sending telemetry.
         let mut sequence = 0;
         loop {
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
 
             let (lat, lon) = if sequence % 5 == 0 {
                 (40.81, -73.99) // Outside the geofence
