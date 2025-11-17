@@ -13,12 +13,10 @@ pub struct SqliteRepository {
 impl SqliteRepository {
     pub async fn new(path: &str) -> Result<Self, RevenantError> {
         let conn = Connection::open(path).await?;
-        // FIX: The closure now correctly takes `&mut conn`
         conn.call(|conn| Self::setup_schema(conn)).await?;
         Ok(Self { conn })
     }
 
-    // FIX: Signature changed to take a mutable connection to match `conn.call`'s expectation.
     fn setup_schema(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
         conn.execute_batch(
             "
@@ -47,7 +45,6 @@ impl SqliteRepository {
             rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
         })?;
 
-        // FIX: Retrieve the timestamp as a string and then parse it.
         let created_at_str: String = row.get("created_at")?;
         let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
             .map(|dt| dt.with_timezone(&chrono::Utc))

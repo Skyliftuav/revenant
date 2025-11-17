@@ -5,6 +5,7 @@ use revenant::cloudevents::{CloudEvent, CloudEventData};
 use revenant::core::{RevenantConfig, RevenantService};
 use revenant::net::Multiaddr;
 use revenant::ports::EventProcessor;
+use revenant::DataRepository;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -190,7 +191,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Err(e) = service_clone.submit(cloud_event).await {
                         eprintln!(
                             "[{:?} App] Failed to submit received event: {}",
-                            e, cloud_event
+                            e,
+                            cloud_event.to_string()
                         );
                     }
                 }
