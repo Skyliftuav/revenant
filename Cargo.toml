@@ -42,4 +42,5 @@ tempfile = "3.10"
 
 # Feature flags to make CLI optional
 [features]
+default = ["cli"]
 cli = ["clap"]
