@@ -1,0 +1,45 @@
+[package]
+name = "revenant"
+version = "0.1.0"
+edition = "2021"
+description = "A resilient, offline-first, peer-to-peer framework for edge and IoT devices, built on hexagonal architecture."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/revenant"
+keywords = ["edge", "iot", "p2p", "offline-first", "hexagonal"]
+categories = ["network-programming", "asynchronous"]
+
+[dependencies]
+# --- P2P Networking ---
+libp2p = { version = "0.53", features = ["gossipsub", "mdns", "noise", "tcp", "tokio", "yamux", "macros"] }
+
+# --- Async Runtime & Utilities ---
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# --- Data Persistence ---
+# Using rusqlite with the async-tokio adapter is crucial for our async hexagonal core.
+rusqlite = { version = "0.37", features = ["bundled"] }
+tokio-rusqlite = "0.7"
+
+# --- Data Serialization & Modeling ---
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.6", features = ["v4", "serde"] } # For CloudEvent IDs
+base64 = "0.22"
+
+# --- Error Handling ---
+thiserror = "1.0"
+
+# --- Configuration & CLI (for examples) ---
+clap = { version = "4.4", features = ["derive"], optional = true }
+
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.10"
+
+# Feature flags to make CLI optional
+[features]
+cli = ["clap"]
