@@ -1,17 +1,11 @@
-// examples/geofence_drone.rs
-
-use chrono::Utc;
 use clap::Parser;
-use libp2p::Multiaddr;
-use revenant::adapters::p2p_syncer::{P2pNodeRole, P2pSyncer};
+use revenant::adapters::p2p_syncer::{NetworkEvent, P2pNodeRole, P2pSyncer};
 use revenant::adapters::sqlite_repo::SqliteRepository;
 use revenant::cloudevents::{CloudEvent, CloudEventData};
 use revenant::core::{RevenantConfig, RevenantService};
 use revenant::ports::EventProcessor;
-use revenant::DataRepository;
 use std::sync::Arc;
 use std::time::Duration;
-use uuid::Uuid;
 
 // --- 1. Define our Business Logic ---
 
@@ -29,6 +23,8 @@ impl EventProcessor for GeofenceProcessor {
     fn process_event(&self, event: CloudEvent) -> Option<CloudEvent> {
         // We only care about telemetry events.
         if event.event_type != "com.drone.telemetry.v1" {
+            // If we receive an alert event, we don't need to process it again.
+            // In a real app, you might have different processors for different event types.
             return None;
         }
 
@@ -108,12 +104,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // The DataRepository (local persistence)
-    // Each node will have its own local database file.
     let db_path = format!("{}_events.db", format!("{:?}", role).to_lowercase());
     let repository = Arc::new(SqliteRepository::new(&db_path).await?);
 
-    // The DataSyncer (P2P networking)
-    let syncer = Arc::new(P2pSyncer::new(role.clone(), cloud_addr).await?);
+    // The DataSyncer (P2P networking) and its event receiver
+    let (syncer, mut event_rx) = P2pSyncer::new(role.clone(), cloud_addr).await?;
+    let syncer = Arc::new(syncer);
 
     // The Revenant Configuration
     let config = RevenantConfig {
@@ -124,12 +120,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- 5. Instantiate and Start the Revenant Service ---
 
-    let revenant_service = RevenantService::new(
+    let revenant_service = Arc::new(RevenantService::new(
         processor,
-        repository.clone(), // Clone the Arcs for the service
+        repository.clone(),
         syncer,
         config,
-    );
+    ));
 
     println!("Revenant service initialized in {:?} mode.", role);
     println!("Database path: {}", db_path);
@@ -145,7 +141,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             tokio::time::sleep(Duration::from_secs(3)).await;
 
-            // Simulate GPS coordinates. Every 5th reading will be outside the geofence.
             let (lat, lon) = if sequence % 5 == 0 {
                 (40.81, -73.99) // Outside the geofence
             } else {
@@ -168,9 +163,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("[Drone App] Submitting telemetry #{}", sequence);
 
-            // Submit the event to Revenant.
-            // The service will process it, and if it's a breach, store the alert.
-            // The sync loop will handle broadcasting any stored alerts.
             if let Err(e) = revenant_service.submit(telemetry_event).await {
                 eprintln!("[Drone App] Failed to submit event: {}", e);
             }
@@ -178,13 +170,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             sequence += 1;
         }
     } else {
-        // Cloud and Edge nodes in this example just run the service.
-        // In a real app, they would also have a listener to receive and display events.
-        // For now, we can check their SQLite files to see if they received the synced data.
-        println!(
-            "Running as {:?}. Listening for peers and syncing data.",
-            role
-        );
+        // Cloud and Edge nodes run a listener task.
+        println!("Running as {:?}. Listening for incoming events...", role);
+
+        let service_clone = revenant_service.clone();
+        tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                if let NetworkEvent::Received(cloud_event) = event {
+                    println!(
+                        "[{:?} App] Received event from network. Submitting to local service.",
+                        role
+                    );
+
+                    // Submit the received event to this node's own RevenantService.
+                    // The service will run its own processor on the event.
+                    // If the processor generates a new event, it will be stored locally.
+                    if let Err(e) = service_clone.submit(cloud_event).await {
+                        eprintln!("[{:?} App] Failed to submit received event: {}", e);
+                    }
+                }
+            }
+        });
+
+        // The main task for cloud/edge can now just do periodic health checks.
         loop {
             tokio::time::sleep(Duration::from_secs(15)).await;
             let pending = repository.count_pending().await?;

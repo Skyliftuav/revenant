@@ -4,6 +4,7 @@ pub mod adapters;
 pub mod cloudevents;
 pub mod core;
 pub mod error;
+pub mod net;
 pub mod ports;
 
 // Re-export the primary public types for easy use by consumers.

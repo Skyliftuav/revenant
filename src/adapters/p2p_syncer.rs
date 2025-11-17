@@ -1,16 +1,18 @@
-use crate::cloudevents::CloudEvent;
 use crate::core::Workload;
 use crate::error::RevenantError;
 use crate::ports::DataSyncer;
+use crate::{cloudevents::CloudEvent, net::Multiaddr};
 use async_trait::async_trait;
 use futures::StreamExt;
+use libp2p::SwarmBuilder;
 use libp2p::{
     gossipsub, mdns, noise,
     swarm::{NetworkBehaviour, SwarmEvent},
-    tcp, yamux, Multiaddr, PeerId, Swarm, SwarmBuilder, Transport,
+    tcp, yamux, PeerId,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,6 +34,12 @@ pub struct P2pSyncer {
     connected_peers: Arc<AtomicUsize>,
 }
 
+/// Events produced by the network task for the application logic.
+#[derive(Debug)]
+pub enum NetworkEvent {
+    Received(CloudEvent),
+}
+
 /// Commands sent from the P2pSyncer to the background network task.
 enum NetworkCommand {
     Publish(Vec<u8>),
@@ -45,23 +53,36 @@ struct P2pBehaviour {
 
 impl P2pSyncer {
     /// Creates a new P2pSyncer and spawns the underlying libp2p network task.
-    pub async fn new(role: NodeRole, cloud_addr: Option<Multiaddr>) -> Result<Self, RevenantError> {
+    /// It now returns a receiver for incoming network events.
+    pub async fn new(
+        role: NodeRole,
+        cloud_addr: Option<Multiaddr>,
+    ) -> Result<(Self, mpsc::Receiver<NetworkEvent>), RevenantError> {
         let (command_tx, command_rx) = mpsc::channel(100);
+        let (event_tx, event_rx) = mpsc::channel(100);
         let connected_peers = Arc::new(AtomicUsize::new(0));
         let connected_peers_clone = connected_peers.clone();
 
         tokio::spawn(async move {
-            if let Err(e) =
-                run_network_task(role, cloud_addr, command_rx, connected_peers_clone).await
+            if let Err(e) = run_network_task(
+                role,
+                cloud_addr,
+                command_rx,
+                event_tx,
+                connected_peers_clone,
+            )
+            .await
             {
                 eprintln!("[P2pSyncer] Network task failed: {}", e);
             }
         });
 
-        Ok(Self {
+        let syncer = Self {
             command_tx,
             connected_peers,
-        })
+        };
+
+        Ok((syncer, event_rx))
     }
 }
 
@@ -92,6 +113,7 @@ async fn run_network_task(
     role: NodeRole,
     cloud_addr: Option<Multiaddr>,
     mut command_rx: mpsc::Receiver<NetworkCommand>,
+    event_tx: mpsc::Sender<NetworkEvent>,
     connected_peers: Arc<AtomicUsize>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let local_key = libp2p::identity::Keypair::generate_ed25519();
@@ -150,16 +172,16 @@ async fn run_network_task(
         NodeRole::Edge => {
             swarm.listen_on("/ip4/0.0.0.0/tcp/25566".parse()?)?;
             if let Some(addr) = cloud_addr {
-                swarm.dial(addr)?;
-                println!("[Edge] Dialed cloud address");
+                swarm.dial(addr.deref().clone())?;
+                println!("[Edge] Dialed cloud address: {}", addr.deref());
             } else {
-                eprintln!("[Edge] No cloud address provided to dial");
-            }
+                eprintln!("[Edge] No cloud address provided to dial.");
+            };
         }
         NodeRole::Drone => {
             swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
         }
-    };
+    }
 
     loop {
         tokio::select! {
@@ -191,10 +213,17 @@ async fn run_network_task(
                         }
                     },
                     SwarmEvent::Behaviour(P2pBehaviourEvent::Gossipsub(gossipsub::Event::Message { message, .. })) => {
-                        // For now, the syncer's job is just to send. A separate "listener" component
-                        // would handle receiving messages and submitting them to the RevenantService.
-                        // We will build this next.
-                        println!("[{role:?}] Received gossip message. (Ignoring in syncer)");
+                        match serde_json::from_slice::<CloudEvent>(&message.data) {
+                            Ok(event) => {
+                                println!("[{role:?}] Received gossip message from {}", event.source);
+                                if event_tx.send(NetworkEvent::Received(event)).await.is_err() {
+                                    eprintln!("[{role:?}] Network event channel closed. Shutting down listener part.");
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[{role:?}] Failed to deserialize CloudEvent from gossip: {}", e);
+                            }
+                        }
                     },
                     _ => {}
                 }
