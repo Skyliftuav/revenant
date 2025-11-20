@@ -44,3 +44,11 @@ pub trait EventProcessor: Send + Sync {
     /// Returns an optional new CloudEvent if processing yields a result to be stored and synced.
     fn process_event(&self, event: CloudEvent) -> Option<CloudEvent>;
 }
+
+/// Port for real-time, fire-and-forget synchronization (e.g., Redis Pub/Sub).
+#[async_trait]
+pub trait RealtimeSyncer: Send + Sync {
+    /// Publish an event immediately.
+    /// This is a best-effort operation and should not block the hot path significantly.
+    async fn publish(&self, event: &CloudEvent) -> Result<(), RevenantError>;
+}

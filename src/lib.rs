@@ -11,7 +11,7 @@ pub mod ports;
 pub use crate::cloudevents::{CloudEvent, CloudEventData};
 pub use crate::core::{RevenantConfig, RevenantService};
 pub use crate::error::RevenantError;
-pub use crate::ports::{DataRepository, DataSyncer, EventProcessor};
+pub use crate::ports::{DataRepository, DataSyncer, EventProcessor, RealtimeSyncer};
 
 // Re-export the concrete adapter implementations so users can construct them.
 pub use crate::adapters::p2p_syncer::{P2pNodeRole, P2pSyncer};

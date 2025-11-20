@@ -1,6 +1,6 @@
 use crate::cloudevents::CloudEvent;
 use crate::error::RevenantError;
-use crate::ports::{DataRepository, DataSyncer, EventProcessor};
+use crate::ports::{DataRepository, DataSyncer, EventProcessor, RealtimeSyncer};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -35,6 +35,7 @@ struct RevenantServiceInner {
     processor: Arc<dyn EventProcessor>,
     repository: Arc<dyn DataRepository>,
     syncer: Arc<dyn DataSyncer>,
+    realtime_syncer: Option<Arc<dyn RealtimeSyncer>>,
     config: RevenantConfig,
 }
 
@@ -44,12 +45,14 @@ impl RevenantService {
         processor: Arc<dyn EventProcessor>,
         repository: Arc<dyn DataRepository>,
         syncer: Arc<dyn DataSyncer>,
+        realtime_syncer: Option<Arc<dyn RealtimeSyncer>>,
         config: RevenantConfig,
     ) -> Self {
         let inner = Arc::new(Mutex::new(RevenantServiceInner {
             processor,
             repository,
             syncer,
+            realtime_syncer,
             config,
         }));
 
@@ -69,6 +72,14 @@ impl RevenantService {
         if let Some(processed_event) = inner.processor.process_event(event) {
             // 2. If processing yields a result, store it.
             inner.repository.store(&processed_event).await?;
+
+            // 3. If a realtime syncer is configured, publish it immediately.
+            if let Some(ref realtime) = inner.realtime_syncer {
+                if let Err(e) = realtime.publish(&processed_event).await {
+                    tracing::warn!("[Revenant] Realtime publish failed: {}", e);
+                    // We do NOT fail the request here, as this is fire-and-forget.
+                }
+            }
         }
 
         Ok(())
