@@ -3,6 +3,7 @@ use crate::error::RevenantError;
 use crate::ports::{DataRepository, DataSyncer, EventProcessor, RealtimeSyncer};
 use std::sync::Arc;
 use std::time::Duration;
+use futures::StreamExt;
 use tokio::sync::Mutex;
 use tokio::time::interval;
 use uuid::Uuid;
@@ -52,12 +53,36 @@ impl RevenantService {
             processor,
             repository,
             syncer,
-            realtime_syncer,
+            realtime_syncer: realtime_syncer.clone(),
             config,
         }));
 
         // Spawn the background sync loop
         tokio::spawn(Self::run_sync_loop(inner.clone()));
+
+        // Spawn the realtime listener if configured
+        if let Some(ref realtime) = realtime_syncer {
+            let realtime_clone = realtime.clone();
+            let inner_clone = inner.clone();
+            tokio::spawn(async move {
+                match realtime_clone.subscribe().await {
+                    Ok(mut stream) => {
+                        while let Some(event) = stream.next().await {
+                            let guard = inner_clone.lock().await;
+                            // Process the incoming event
+                            if let Some(processed) = guard.processor.process_event(event) {
+                                if let Err(e) = guard.repository.store(&processed).await {
+                                    tracing::error!("[Revenant] Failed to store processed realtime event: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("[Revenant] Failed to subscribe to realtime syncer: {}", e);
+                    }
+                }
+            });
+        }
 
         Self { inner }
     }

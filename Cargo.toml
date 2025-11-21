@@ -13,6 +13,7 @@ libp2p = { version = "0.53", features = ["gossipsub", "mdns", "noise", "tcp", "t
 
 # --- Async Runtime & Utilities ---
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
 futures = "0.3"
 async-trait = "0.1"
 
@@ -21,6 +22,7 @@ async-trait = "0.1"
 rusqlite = { version = "0.37", features = ["bundled"] }
 tokio-rusqlite = "0.7"
 redis = { version = "0.24", features = ["tokio-comp"] }
+lru = "0.12"
 
 # --- Data Serialization & Modeling ---
 serde = { version = "1.0", features = ["derive"] }

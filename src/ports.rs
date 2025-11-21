@@ -3,6 +3,7 @@ use crate::cloudevents::CloudEvent;
 use crate::core::Workload;
 use crate::error::RevenantError;
 use async_trait::async_trait;
+use futures::stream::BoxStream;
 
 /// Port for durable local storage of events.
 #[async_trait]
@@ -51,4 +52,8 @@ pub trait RealtimeSyncer: Send + Sync {
     /// Publish an event immediately.
     /// This is a best-effort operation and should not block the hot path significantly.
     async fn publish(&self, event: &CloudEvent) -> Result<(), RevenantError>;
+
+    /// Subscribe to incoming real-time events.
+    /// Returns a stream of events.
+    async fn subscribe(&self) -> Result<BoxStream<'static, CloudEvent>, RevenantError>;
 }
