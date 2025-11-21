@@ -15,4 +15,5 @@ pub use crate::ports::{DataRepository, DataSyncer, EventProcessor, RealtimeSynce
 
 // Re-export the concrete adapter implementations so users can construct them.
 pub use crate::adapters::p2p_syncer::{P2pNodeRole, P2pSyncer};
+pub use crate::adapters::redis_syncer::RedisSyncer;
 pub use crate::adapters::sqlite_repo::SqliteRepository;
