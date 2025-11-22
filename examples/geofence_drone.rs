@@ -86,7 +86,7 @@ enum Subcommand {
         #[clap(long)]
         cloud_addr: Multiaddr,
     },
-    Drone,
+    Device,
 }
 
 // --- 3. Main Application Entrypoint ---
@@ -108,7 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (role, cloud_addr) = match opts.sub {
         Subcommand::Cloud => (P2pNodeRole::Cloud, None),
         Subcommand::Edge { cloud_addr } => (P2pNodeRole::Edge, Some(cloud_addr)),
-        Subcommand::Drone => (P2pNodeRole::Drone, None),
+        Subcommand::Device => (P2pNodeRole::Device, None),
     };
 
     // --- 4. Construct Revenant Components ---
@@ -126,7 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let repository = Arc::new(SqliteRepository::new(&db_path).await?);
 
     // The DataSyncer (P2P networking) and its event receiver
-    let (syncer, mut event_rx) = P2pSyncer::new(role.clone(), cloud_addr).await?;
+    let (syncer, mut event_rx) = P2pSyncer::new(role.clone(), cloud_addr, None).await?;
     let syncer = Arc::new(syncer);
 
     // The Revenant Configuration
@@ -142,6 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         processor,
         repository.clone(),
         syncer,
+        None,
         config,
     ));
 
@@ -150,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- 6. Run Role-Specific Application Logic ---
 
-    if role == P2pNodeRole::Drone {
+    if role == P2pNodeRole::Device {
         let drone_id = format!("drone-{}", Uuid::new_v4());
         println!("Running as Drone with ID: {}", drone_id);
 

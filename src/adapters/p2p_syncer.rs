@@ -28,7 +28,7 @@ const DRONE_DATA_TOPIC: &str = "revenant-data";
 pub enum NodeRole {
     Cloud,
     Edge,
-    Drone,
+    Device,
 }
 
 /// The P2pSyncer is our concrete implementation of the DataSyncer port.
@@ -208,7 +208,7 @@ async fn run_network_task(
                 tracing::error!("[Edge] No cloud address provided to dial.");
             };
         }
-        NodeRole::Drone => {
+        NodeRole::Device => {
             swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
         }
     }
