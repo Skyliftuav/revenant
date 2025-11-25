@@ -18,3 +18,6 @@ pub use crate::adapters::noop_repo::NoOpRepository;
 pub use crate::adapters::p2p_syncer::{P2pNodeRole, P2pSyncer};
 pub use crate::adapters::redis_syncer::RedisSyncer;
 pub use crate::adapters::sqlite_repo::SqliteRepository;
+
+// Re-export libp2p for consumers to use types like Keypair
+pub use libp2p;

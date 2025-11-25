@@ -9,7 +9,7 @@ categories = ["network-programming", "asynchronous"]
 
 [dependencies]
 # --- P2P Networking ---
-libp2p = { version = "0.53", features = ["gossipsub", "mdns", "noise", "tcp", "tokio", "yamux", "macros", "pnet"] }
+libp2p = { version = "0.53", features = ["gossipsub", "mdns", "noise", "tcp", "tokio", "yamux", "macros", "pnet", "ecdsa"] }
 
 # --- Async Runtime & Utilities ---
 tokio = { version = "1", features = ["full"] }

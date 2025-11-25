@@ -1,9 +1,9 @@
 use crate::cloudevents::CloudEvent;
 use crate::error::RevenantError;
 use crate::ports::{DataRepository, DataSyncer, EventProcessor, RealtimeSyncer};
+use futures::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
-use futures::StreamExt;
 use tokio::sync::Mutex;
 use tokio::time::interval;
 use uuid::Uuid;
@@ -29,7 +29,10 @@ pub struct RevenantConfig {
 /// The central orchestration service for Revenant.
 pub struct RevenantService {
     // Using an inner struct to hide the mutex and channel sender
+    // Using an inner struct to hide the mutex and channel sender
     inner: Arc<Mutex<RevenantServiceInner>>,
+    // Handles for background tasks to allow shutdown
+    shutdown_handles: Arc<std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>>,
 }
 
 struct RevenantServiceInner {
@@ -48,6 +51,7 @@ impl RevenantService {
         syncer: Arc<dyn DataSyncer>,
         realtime_syncer: Option<Arc<dyn RealtimeSyncer>>,
         config: RevenantConfig,
+        extra_handles: Vec<tokio::task::JoinHandle<()>>,
     ) -> Self {
         let inner = Arc::new(Mutex::new(RevenantServiceInner {
             processor,
@@ -57,14 +61,17 @@ impl RevenantService {
             config,
         }));
 
+        let shutdown_handles = Arc::new(std::sync::Mutex::new(extra_handles));
+
         // Spawn the background sync loop
-        tokio::spawn(Self::run_sync_loop(inner.clone()));
+        let sync_handle = tokio::spawn(Self::run_sync_loop(inner.clone()));
+        shutdown_handles.lock().unwrap().push(sync_handle);
 
         // Spawn the realtime listener if configured
         if let Some(ref realtime) = realtime_syncer {
             let realtime_clone = realtime.clone();
             let inner_clone = inner.clone();
-            tokio::spawn(async move {
+            let rt_handle = tokio::spawn(async move {
                 match realtime_clone.subscribe().await {
                     Ok(mut stream) => {
                         while let Some(event) = stream.next().await {
@@ -72,7 +79,10 @@ impl RevenantService {
                             // Process the incoming event
                             if let Some(processed) = guard.processor.process_event(event) {
                                 if let Err(e) = guard.repository.store(&processed).await {
-                                    tracing::error!("[Revenant] Failed to store processed realtime event: {}", e);
+                                    tracing::error!(
+                                        "[Revenant] Failed to store processed realtime event: {}",
+                                        e
+                                    );
                                 }
                             }
                         }
@@ -82,9 +92,23 @@ impl RevenantService {
                     }
                 }
             });
+            shutdown_handles.lock().unwrap().push(rt_handle);
         }
 
-        Self { inner }
+        Self {
+            inner,
+            shutdown_handles,
+        }
+    }
+
+    /// Shuts down all background tasks associated with this service.
+    pub async fn shutdown(&self) {
+        let mut handles = self.shutdown_handles.lock().unwrap();
+        for handle in handles.iter() {
+            handle.abort();
+        }
+        handles.clear();
+        tracing::info!("[Revenant] Service shutdown complete");
     }
 
     /// Submits a CloudEvent for immediate processing and eventual synchronization.
@@ -170,5 +194,15 @@ impl RevenantService {
         }
 
         Ok(())
+    }
+
+    pub fn get_role(&self) -> String {
+        let inner = self.inner.blocking_lock();
+        inner.syncer.get_node_role()
+    }
+
+    pub fn get_connected_peers_count(&self) -> usize {
+        let inner = self.inner.blocking_lock();
+        inner.syncer.get_connected_peers_count()
     }
 }

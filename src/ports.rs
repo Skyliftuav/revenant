@@ -37,6 +37,10 @@ pub trait DataSyncer: Send + Sync {
 
     /// Check if the syncer is connected to any peers.
     async fn is_connected(&self) -> bool;
+
+    fn get_connected_peers_count(&self) -> usize;
+
+    fn get_node_role(&self) -> String;
 }
 
 /// Port for the real-time processing logic (the "hot path").

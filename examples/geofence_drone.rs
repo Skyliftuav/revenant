@@ -90,6 +90,7 @@ enum Subcommand {
 }
 
 // --- 3. Main Application Entrypoint ---
+//
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -125,8 +126,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_path = format!("{}_events.db", format!("{:?}", role).to_lowercase());
     let repository = Arc::new(SqliteRepository::new(&db_path).await?);
 
+    let key_pair = revenant::libp2p::identity::Keypair::generate_ecdsa();
+    let secret = key_pair.derive_secret("revenant-geofence-example-secret".as_bytes());
+
     // The DataSyncer (P2P networking) and its event receiver
-    let (syncer, mut event_rx) = P2pSyncer::new(role.clone(), cloud_addr, None).await?;
+    let (syncer, mut event_rx, handle) =
+        P2pSyncer::new(role.clone(), cloud_addr, secret, key_pair).await?;
     let syncer = Arc::new(syncer);
 
     // The Revenant Configuration
@@ -144,6 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         syncer,
         None,
         config,
+        vec![handle],
     ));
 
     tracing::info!("Revenant service initialized in {:?} mode.", role.clone());

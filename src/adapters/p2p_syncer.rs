@@ -7,9 +7,9 @@ use futures::future::Either;
 use futures::StreamExt;
 use libp2p::SwarmBuilder;
 use libp2p::{
+    core::{transport::Transport, upgrade::Version},
     gossipsub, mdns, noise,
     pnet::{PnetConfig, PreSharedKey},
-    core::{transport::Transport, upgrade::Version},
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, PeerId,
 };
@@ -36,6 +36,7 @@ pub enum NodeRole {
 pub struct P2pSyncer {
     command_tx: mpsc::Sender<NetworkCommand>,
     connected_peers: Arc<AtomicUsize>,
+    role: NodeRole,
 }
 
 /// Events produced by the network task for the application logic.
@@ -61,24 +62,33 @@ impl P2pSyncer {
     pub async fn new(
         role: NodeRole,
         cloud_addr: Option<Multiaddr>,
-        secret_key: Option<String>,
-    ) -> Result<(Self, mpsc::Receiver<NetworkEvent>), RevenantError> {
+        secret_key: Option<[u8; 32]>,
+        local_key: libp2p::identity::Keypair,
+    ) -> Result<
+        (
+            Self,
+            mpsc::Receiver<NetworkEvent>,
+            tokio::task::JoinHandle<()>,
+        ),
+        RevenantError,
+    > {
         let (command_tx, command_rx) = mpsc::channel(100);
         let (event_tx, event_rx) = mpsc::channel(100);
         let connected_peers = Arc::new(AtomicUsize::new(0));
         let connected_peers_clone = connected_peers.clone();
 
         let psk = if let Some(key_str) = secret_key {
-            Some(PreSharedKey::from_str(&key_str).map_err(|e| RevenantError::Configuration(format!("Invalid PSK: {}", e)))?)
+            Some(PreSharedKey::new(key_str))
         } else {
             None
         };
-
-        tokio::spawn(async move {
+        let role_clone = role.clone();
+        let handle = tokio::spawn(async move {
             if let Err(e) = run_network_task(
-                role,
+                role_clone,
                 cloud_addr,
                 psk,
+                local_key,
                 command_rx,
                 event_tx,
                 connected_peers_clone,
@@ -92,9 +102,10 @@ impl P2pSyncer {
         let syncer = Self {
             command_tx,
             connected_peers,
+            role,
         };
 
-        Ok((syncer, event_rx))
+        Ok((syncer, event_rx, handle))
     }
 }
 
@@ -118,6 +129,14 @@ impl DataSyncer for P2pSyncer {
     async fn is_connected(&self) -> bool {
         self.connected_peers.load(Ordering::Relaxed) > 0
     }
+
+    fn get_connected_peers_count(&self) -> usize {
+        self.connected_peers.load(Ordering::Relaxed)
+    }
+
+    fn get_node_role(&self) -> String {
+        format!("{:?}", self.role)
+    }
 }
 
 /// The main background task that runs the libp2p swarm.
@@ -125,11 +144,11 @@ async fn run_network_task(
     role: NodeRole,
     cloud_addr: Option<Multiaddr>,
     secret_key: Option<PreSharedKey>,
+    local_key: libp2p::identity::Keypair,
     mut command_rx: mpsc::Receiver<NetworkCommand>,
     event_tx: mpsc::Sender<NetworkEvent>,
     connected_peers: Arc<AtomicUsize>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let local_key = libp2p::identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
     tracing::info!("[{role:?}] Local peer id: {local_peer_id}");
 
@@ -140,16 +159,14 @@ async fn run_network_task(
             let yamux_config = yamux::Config::default();
 
             let base_transport = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true));
-            
+
             let transport = if let Some(psk) = secret_key {
                 base_transport
                     .and_then(move |socket, _| PnetConfig::new(psk).handshake(socket))
                     .map(|out, _| Either::Left(out))
                     .boxed()
             } else {
-                base_transport
-                    .map(|out, _| Either::Right(out))
-                    .boxed()
+                base_transport.map(|out, _| Either::Right(out)).boxed()
             };
 
             transport
