@@ -21,7 +21,7 @@ async-trait = "0.1"
 # Using rusqlite with the async-tokio adapter is crucial for our async hexagonal core.
 rusqlite = { version = "0.37", features = ["bundled"] }
 tokio-rusqlite = "0.7"
-redis = { version = "0.24", features = ["tokio-comp"] }
+redis = { version = "0.25", features = ["tokio-comp", "json"] }
 lru = "0.12"
 
 # --- Data Serialization & Modeling ---

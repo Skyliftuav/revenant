@@ -96,7 +96,10 @@ impl RedisSyncer {
                                             .await;
                                     }
                                     Err(e) => {
-                                        tracing::error!("Failed to deserialize priority payload: {}", e);
+                                        tracing::error!(
+                                            "Failed to deserialize priority payload: {}",
+                                            e
+                                        );
                                     }
                                 }
                             }
@@ -119,7 +122,9 @@ impl RealtimeSyncer for RedisSyncer {
             .client
             .get_multiplexed_async_connection()
             .await
-            .map_err(|e| RevenantError::Network(format!("Failed to get Redis connection: {}", e)))?;
+            .map_err(|e| {
+                RevenantError::Network(format!("Failed to get Redis connection: {}", e))
+            })?;
 
         let topic_suffix = event.event_type.clone();
         let channel = format!("{}/{}/{}", self.device_type, self.device_id, topic_suffix);
@@ -147,8 +152,8 @@ impl RealtimeSyncer for RedisSyncer {
 
             loop {
                 // 1. Pub/Sub Listener
-                let mut pubsub_conn = match client.get_async_connection().await {
-                    Ok(c) => c.into_pubsub(),
+                let mut pubsub_conn = match client.get_async_pubsub().await {
+                    Ok(c) => c,
                     Err(e) => {
                         tracing::error!("Failed to get Redis connection for PubSub: {}", e);
                         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
