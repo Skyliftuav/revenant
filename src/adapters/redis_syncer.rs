@@ -212,15 +212,12 @@ impl RealtimeSyncer for RedisSyncer {
                                     }
                                 }
                                 None => {
-                                    tracing::warn!("Pub/Sub message stream ended. Reconnecting...");
-                                    break;
+                                    tracing::warn!("Pub/Sub message stream ended");
                                 }
                             }
                         }
                     }
                 }
-                stream_handle.abort();
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
         });
 
