@@ -2518,7 +2518,7 @@ checksum = "6b3789b30bd25ba102de4beabd95d21ac45b69b1be7d14522bab988c526d6799"
 
 [[package]]
 name = "revenant"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

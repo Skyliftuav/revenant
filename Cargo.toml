@@ -1,6 +1,6 @@
 [package]
 name = "revenant"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "A resilient, offline-first, peer-to-peer framework for edge and IoT devices, built on hexagonal architecture."
 license = "MIT"
