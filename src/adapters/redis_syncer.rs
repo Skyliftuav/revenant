@@ -212,7 +212,8 @@ impl RealtimeSyncer for RedisSyncer {
                                     }
                                 }
                                 None => {
-                                    tracing::warn!("Pub/Sub message stream ended");
+                                    tracing::warn!("Pub/Sub message stream ended unexpectedly. Reconnecting...");
+                                    break;
                                 }
                             }
                         }
